@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión de Pedidos</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="header-container">
+            <h1>Sistema de Gestión de Pedidos</h1>
+            <button id="configBtn" class="config-btn">⚙️ Configuración</button>
+        </div>
+        
+        <!-- Modal de Configuración -->
+        <div id="configModal" class="modal">
+            <div class="modal-content">
+                <h2>Configuración</h2>
+                <div class="config-section">
+                    <h3>Tema</h3>
+                    <select id="themeSelect">
+                        <option value="light">Claro</option>
+                        <option value="dark">Oscuro</option>
+                        <option value="neon">Neón</option>
+                        <option value="pastel">Pastel</option>
+                    </select>
+                </div>
+                <div class="config-section">
+                    <h3>Pedidos Ocultos</h3>
+                    <div id="hiddenOrdersList"></div>
+                </div>
+                <button id="closeConfigBtn" class="close-btn">Cerrar</button>
+            </div>
+        </div>
+
+        <div class="form-container">
+            <h2>Nuevo Pedido</h2>
+            <form id="orderForm">
+                <div class="form-group">
+                    <label for="customerName">Nombre del Cliente:</label>
+                    <input type="text" id="customerName" placeholder="Ingrese el nombre del cliente" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="phoneNumber">Número de Teléfono:</label>
+                    <input type="tel" id="phoneNumber" placeholder="Ingrese el número de teléfono" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="productType">Tipo de Producto:</label>
+                    <input type="text" id="productType" placeholder="Ingrese el tipo de producto" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="observations">Observaciones:</label>
+                    <textarea id="observations" rows="3" placeholder="Ingrese observaciones adicionales"></textarea>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <label for="paid">
+                        <input type="checkbox" id="paid">
+                        <span class="checkbox-text">Pagado</span>
+                    </label>
+                </div>
+
+                <button type="submit">Crear Pedido</button>
+            </form>
+        </div>
+
+        <div class="orders-container">
+            <h2>Pedidos Actuales</h2>
+            <div id="ordersList"></div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
