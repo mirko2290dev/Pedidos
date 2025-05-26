@@ -2,9 +2,9 @@ class OrderManager {
     constructor() {
         this.orders = JSON.parse(localStorage.getItem('orders')) || [];
         this.hiddenOrders = JSON.parse(localStorage.getItem('hiddenOrders')) || [];
-        this.GITHUB_TOKEN = ''; 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
-        this.REPO_OWNER = ''; mirko2290dev
-        this.REPO_NAME = ''; Pedidos
+        this.GITHUB_TOKEN = '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';
+        this.REPO_OWNER = 'mirko2290dec';
+        this.REPO_NAME = 'Pedidos';
         this.loadOrders();
         this.setupThemeSelector();
     }
@@ -58,7 +58,6 @@ class OrderManager {
             this.setTheme(e.target.value);
         });
 
-        // Cargar tema guardado o usar el predeterminado
         const savedTheme = localStorage.getItem('theme') || 'light';
         themeSelector.value = savedTheme;
         this.setTheme(savedTheme);
@@ -139,7 +138,6 @@ class OrderManager {
         localStorage.setItem('hiddenOrders', JSON.stringify(this.hiddenOrders));
         this.syncWithGitHub();
 
-        // Limpiar pedidos entregados después de 10 días
         const tenDaysAgo = new Date();
         tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
 
@@ -224,9 +222,7 @@ class OrderManager {
     }
 }
 
-// Inicializar el gestor de pedidos
 const orderManager = new OrderManager();
 
-// Event Listeners
 document.getElementById('orderForm').addEventListener('submit', (e) => orderManager.addOrder(e));
 document.getElementById('toggleHiddenOrders').addEventListener('click', () => orderManager.toggleHiddenOrders());
