@@ -1,231 +1,236 @@
 class OrderManager {
     constructor() {
-        this.orders = JSON.parse(localStorage.getItem('orders')) || [];
-        this.hiddenOrders = JSON.parse(localStorage.getItem('hiddenOrders')) || [];
-        this.loadOrders();
+        this.orders = [];
+        this.hiddenOrders = [];
+        this.loadFromLocalStorage();
         this.setupThemeSelector();
-        this.syncFromGitHub(); // Sincronizar al inicio
+        this.syncFromGitHub();
+        this.cleanupOldOrders();
+        setInterval(() => this.cleanupOldOrders(), 24 * 60 * 60 * 1000); // Check daily
     }
 
     async syncFromGitHub() {
         try {
-            const response = await fetch('https://api.github.com/repos/mirko2290dec/Pedidos/contents/orders.json', {
-                headers: {
-                    'Accept': 'application/vnd.github.v3.raw'
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                // Combinar datos remotos con locales
-                this.mergeOrders(data);
-                this.loadOrders();
+            const response = await fetch('https://raw.githubusercontent.com/mirko2290dec/Pedidos/main/orders.json');
+            if (!response.ok) {
+                throw new Error('No se pudo obtener los datos del repositorio');
             }
+            const remoteData = await response.json();
+            this.mergeOrders(remoteData);
         } catch (error) {
-            console.log('Usando datos locales:', error);
+            console.error('Error al sincronizar con GitHub:', error);
         }
     }
 
-    mergeOrders(remoteOrders) {
-        // Crear un mapa de órdenes locales por ID
-        const localOrdersMap = new Map();
-        this.orders.forEach(order => localOrdersMap.set(order.id, order));
-        this.hiddenOrders.forEach(order => localOrdersMap.set(order.id, order));
+    mergeOrders(remoteData) {
+        const remoteOrders = remoteData.orders || [];
+        const remoteHiddenOrders = remoteData.hiddenOrders || [];
 
-        // Actualizar con órdenes remotas más recientes
+        // Merge visible orders
         remoteOrders.forEach(remoteOrder => {
-            const localOrder = localOrdersMap.get(remoteOrder.id);
-            if (!localOrder || new Date(remoteOrder.lastModified) > new Date(localOrder.lastModified)) {
-                if (remoteOrder.hidden) {
-                    this.hiddenOrders = this.hiddenOrders.filter(o => o.id !== remoteOrder.id);
-                    this.hiddenOrders.push(remoteOrder);
-                } else {
-                    this.orders = this.orders.filter(o => o.id !== remoteOrder.id);
+            const localOrder = this.orders.find(o => o.id === remoteOrder.id);
+            if (!localOrder || remoteOrder.lastModified > localOrder.lastModified) {
+                if (!localOrder) {
                     this.orders.push(remoteOrder);
+                } else {
+                    Object.assign(localOrder, remoteOrder);
                 }
             }
         });
 
-        this.saveOrders();
+        // Merge hidden orders
+        remoteHiddenOrders.forEach(remoteOrder => {
+            const localHiddenOrder = this.hiddenOrders.find(o => o.id === remoteOrder.id);
+            if (!localHiddenOrder || remoteOrder.lastModified > localHiddenOrder.lastModified) {
+                if (!localHiddenOrder) {
+                    this.hiddenOrders.push(remoteOrder);
+                } else {
+                    Object.assign(localHiddenOrder, remoteOrder);
+                }
+            }
+        });
+
+        this.saveToLocalStorage();
+        this.renderOrders();
     }
 
     setupThemeSelector() {
-        const themeSelector = document.getElementById('themeSelector');
-        themeSelector.addEventListener('change', (e) => {
-            this.setTheme(e.target.value);
-        });
-
         const savedTheme = localStorage.getItem('theme') || 'light';
-        themeSelector.value = savedTheme;
         this.setTheme(savedTheme);
     }
 
     setTheme(theme) {
-        document.body.className = theme;
+        document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
     }
 
-    addOrder(event) {
-        event.preventDefault();
+    toggleConfigPanel() {
+        const panel = document.getElementById('configPanel');
+        panel.classList.toggle('hidden');
+    }
+
+    hideConfigPanel() {
+        const panel = document.getElementById('configPanel');
+        panel.classList.add('hidden');
+    }
+
+    showHiddenOrders() {
+        const container = document.getElementById('ordersContainer');
+        container.innerHTML = '';
+
+        this.hiddenOrders.forEach(order => {
+            const card = this.createOrderCard(order, true);
+            container.appendChild(card);
+        });
+
+        // Agregar botón para volver a los pedidos normales
+        const backButton = document.createElement('button');
+        backButton.textContent = 'Volver a Pedidos Activos';
+        backButton.onclick = () => this.renderOrders();
+        backButton.style.marginTop = '20px';
+        container.insertBefore(backButton, container.firstChild);
+    }
+
+    loadFromLocalStorage() {
+        const savedOrders = localStorage.getItem('orders');
+        const savedHiddenOrders = localStorage.getItem('hiddenOrders');
+        if (savedOrders) this.orders = JSON.parse(savedOrders);
+        if (savedHiddenOrders) this.hiddenOrders = JSON.parse(savedHiddenOrders);
+    }
+
+    saveToLocalStorage() {
+        localStorage.setItem('orders', JSON.stringify(this.orders));
+        localStorage.setItem('hiddenOrders', JSON.stringify(this.hiddenOrders));
+    }
+
+    addOrder() {
+        const customerName = document.getElementById('customerName').value;
+        const phoneNumber = document.getElementById('phoneNumber').value;
+        const orderType = document.getElementById('orderType').value;
+        const observations = document.getElementById('observations').value;
+
+        if (!customerName || !phoneNumber || !orderType) {
+            alert('Por favor complete todos los campos requeridos');
+            return;
+        }
+
         const order = {
             id: Date.now().toString(),
-            customerName: document.getElementById('customerName').value,
-            phoneNumber: document.getElementById('phoneNumber').value,
-            orderType: document.getElementById('orderType').value,
-            observations: document.getElementById('observations').value,
-            creationDate: new Date().toISOString(),
-            lastModified: new Date().toISOString(),
-            deliveryDate: null,
+            customerName,
+            phoneNumber,
+            orderType,
+            observations,
+            date: new Date().toISOString(),
             paid: false,
             delivered: false,
-            hidden: false
+            lastModified: Date.now()
         };
 
         this.orders.push(order);
-        this.saveOrders();
-        this.loadOrders();
-        event.target.reset();
+        this.saveToLocalStorage();
+        this.renderOrders();
+
+        // Clear form
+        document.getElementById('customerName').value = '';
+        document.getElementById('phoneNumber').value = '';
+        document.getElementById('orderType').value = '';
+        document.getElementById('observations').value = '';
     }
 
-    togglePaid(orderId) {
+    toggleOrderStatus(orderId, status) {
         const order = this.orders.find(o => o.id === orderId);
         if (order) {
-            order.paid = !order.paid;
-            order.lastModified = new Date().toISOString();
-            this.saveOrders();
-            this.loadOrders();
-        }
-    }
-
-    toggleDelivered(orderId) {
-        const order = this.orders.find(o => o.id === orderId);
-        if (order) {
-            order.delivered = !order.delivered;
-            order.deliveryDate = order.delivered ? new Date().toISOString() : null;
-            order.lastModified = new Date().toISOString();
-            this.saveOrders();
-            this.loadOrders();
+            order[status] = !order[status];
+            order.lastModified = Date.now();
+            this.saveToLocalStorage();
+            this.renderOrders();
         }
     }
 
     hideOrder(orderId) {
         const orderIndex = this.orders.findIndex(o => o.id === orderId);
         if (orderIndex !== -1) {
-            const [order] = this.orders.splice(orderIndex, 1);
-            order.hidden = true;
-            order.lastModified = new Date().toISOString();
+            const order = this.orders.splice(orderIndex, 1)[0];
+            order.lastModified = Date.now();
             this.hiddenOrders.push(order);
-            this.saveOrders();
-            this.loadOrders();
+            this.saveToLocalStorage();
+            this.renderOrders();
         }
     }
 
     restoreOrder(orderId) {
         const orderIndex = this.hiddenOrders.findIndex(o => o.id === orderId);
         if (orderIndex !== -1) {
-            const [order] = this.hiddenOrders.splice(orderIndex, 1);
-            order.hidden = false;
-            order.lastModified = new Date().toISOString();
+            const order = this.hiddenOrders.splice(orderIndex, 1)[0];
+            order.lastModified = Date.now();
             this.orders.push(order);
-            this.saveOrders();
-            this.loadOrders();
-            this.loadHiddenOrders();
+            this.saveToLocalStorage();
+            this.showHiddenOrders(); // Refresh hidden orders view
         }
     }
 
-    saveOrders() {
-        // Limpiar pedidos entregados después de 10 días
-        const tenDaysAgo = new Date();
-        tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
-
+    cleanupOldOrders() {
+        const now = new Date();
         this.orders = this.orders.filter(order => {
-            if (order.delivered && order.deliveryDate) {
-                const deliveryDate = new Date(order.deliveryDate);
-                return deliveryDate > tenDaysAgo;
+            if (order.delivered) {
+                const orderDate = new Date(order.date);
+                const daysSinceOrder = (now - orderDate) / (1000 * 60 * 60 * 24);
+                return daysSinceOrder <= 10;
             }
             return true;
         });
-
-        localStorage.setItem('orders', JSON.stringify(this.orders));
-        localStorage.setItem('hiddenOrders', JSON.stringify(this.hiddenOrders));
-
-        // No intentamos sincronizar con GitHub aquí, ya que necesitaríamos el token
-        // Los datos se mantienen localmente
+        this.saveToLocalStorage();
+        this.renderOrders();
     }
 
-    loadOrders() {
-        const ordersList = document.getElementById('ordersList');
-        ordersList.innerHTML = '';
-
-        this.orders.forEach(order => {
-            const orderElement = this.createOrderElement(order);
-            ordersList.appendChild(orderElement);
+    createOrderCard(order, isHidden = false) {
+        const card = document.createElement('div');
+        card.className = 'order-card';
+        
+        const date = new Date(order.date);
+        const formattedDate = date.toLocaleDateString('es-ES', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
         });
-    }
 
-    loadHiddenOrders() {
-        const hiddenOrdersList = document.getElementById('hiddenOrdersList');
-        if (hiddenOrdersList) {
-            hiddenOrdersList.innerHTML = '';
-            this.hiddenOrders.forEach(order => {
-                const orderElement = this.createHiddenOrderElement(order);
-                hiddenOrdersList.appendChild(orderElement);
-            });
-        }
-    }
-
-    createOrderElement(order) {
-        const div = document.createElement('div');
-        div.className = 'order-card';
-        div.innerHTML = `
+        card.innerHTML = `
             <h3>${order.customerName}</h3>
-            <p>Teléfono: ${order.phoneNumber}</p>
-            <p>Tipo: ${order.orderType}</p>
-            <p>Observaciones: ${order.observations}</p>
-            <p>Fecha de creación: ${new Date(order.creationDate).toLocaleString()}</p>
-            ${order.deliveryDate ? `<p>Fecha de entrega: ${new Date(order.deliveryDate).toLocaleString()}</p>` : ''}
-            <div class="order-actions">
-                <label class="checkbox-label">
-                    <input type="checkbox" ${order.paid ? 'checked' : ''} onchange="orderManager.togglePaid('${order.id}')"> Pagado
-                </label>
-                <label class="checkbox-label">
-                    <input type="checkbox" ${order.delivered ? 'checked' : ''} onchange="orderManager.toggleDelivered('${order.id}')"> Entregado
-                </label>
-                <button onclick="orderManager.hideOrder('${order.id}')">Ocultar Pedido</button>
+            <p><strong>Teléfono:</strong> ${order.phoneNumber}</p>
+            <p><strong>Tipo:</strong> ${order.orderType}</p>
+            <p><strong>Fecha:</strong> ${formattedDate}</p>
+            ${order.observations ? `<p><strong>Observaciones:</strong> ${order.observations}</p>` : ''}
+            <p><strong>Estado:</strong> 
+                ${order.paid ? 'Pagado' : 'Pendiente de pago'} | 
+                ${order.delivered ? 'Entregado' : 'Pendiente de entrega'}
+            </p>
+            <div class="status-buttons">
+                ${isHidden ?
+                    `<button onclick="orderManager.restoreOrder('${order.id}')">Restaurar Pedido</button>` :
+                    `<button onclick="orderManager.toggleOrderStatus('${order.id}', 'paid')">
+                        ${order.paid ? 'Marcar No Pagado' : 'Marcar Pagado'}
+                    </button>
+                    <button onclick="orderManager.toggleOrderStatus('${order.id}', 'delivered')">
+                        ${order.delivered ? 'Marcar No Entregado' : 'Marcar Entregado'}
+                    </button>
+                    <button onclick="orderManager.hideOrder('${order.id}')">Ocultar Pedido</button>`
+                }
             </div>
         `;
-        return div;
+
+        return card;
     }
 
-    createHiddenOrderElement(order) {
-        const div = document.createElement('div');
-        div.className = 'order-card hidden';
-        div.innerHTML = `
-            <h3>${order.customerName}</h3>
-            <p>Teléfono: ${order.phoneNumber}</p>
-            <p>Tipo: ${order.orderType}</p>
-            <p>Observaciones: ${order.observations}</p>
-            <p>Fecha de creación: ${new Date(order.creationDate).toLocaleString()}</p>
-            ${order.deliveryDate ? `<p>Fecha de entrega: ${new Date(order.deliveryDate).toLocaleString()}</p>` : ''}
-            <div class="order-actions">
-                <button onclick="orderManager.restoreOrder('${order.id}')">Restaurar Pedido</button>
-            </div>
-        `;
-        return div;
-    }
-
-    toggleHiddenOrders() {
-        const hiddenOrdersSection = document.getElementById('hiddenOrdersSection');
-        if (hiddenOrdersSection.style.display === 'none') {
-            hiddenOrdersSection.style.display = 'block';
-            this.loadHiddenOrders();
-        } else {
-            hiddenOrdersSection.style.display = 'none';
-        }
+    renderOrders() {
+        const container = document.getElementById('ordersContainer');
+        container.innerHTML = '';
+        this.orders.forEach(order => {
+            const card = this.createOrderCard(order);
+            container.appendChild(card);
+        });
     }
 }
 
 const orderManager = new OrderManager();
-
-document.getElementById('orderForm').addEventListener('submit', (e) => orderManager.addOrder(e));
-document.getElementById('toggleHiddenOrders').addEventListener('click', () => orderManager.toggleHiddenOrders());
