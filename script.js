@@ -2,54 +2,51 @@ class OrderManager {
     constructor() {
         this.orders = JSON.parse(localStorage.getItem('orders')) || [];
         this.hiddenOrders = JSON.parse(localStorage.getItem('hiddenOrders')) || [];
-        this.GITHUB_TOKEN = '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';
-        this.REPO_OWNER = 'mirko2290dec';
-        this.REPO_NAME = 'Pedidos';
         this.loadOrders();
         this.setupThemeSelector();
+        this.syncFromGitHub(); // Sincronizar al inicio
     }
 
-    async syncWithGitHub() {
+    async syncFromGitHub() {
         try {
-            const allOrders = [...this.orders, ...this.hiddenOrders];
-            const content = btoa(JSON.stringify(allOrders, null, 2));
-            
-            const response = await fetch(`https://api.github.com/repos/${this.REPO_OWNER}/${this.REPO_NAME}/contents/orders.json`, {
-                method: 'PUT',
+            const response = await fetch('https://api.github.com/repos/mirko2290dec/Pedidos/contents/orders.json', {
                 headers: {
-                    'Authorization': `token ${this.GITHUB_TOKEN}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    message: 'Actualizar pedidos',
-                    content: content,
-                    sha: await this.getFileSHA()
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error('Error al sincronizar con GitHub');
-            }
-        } catch (error) {
-            console.error('Error de sincronización:', error);
-        }
-    }
-
-    async getFileSHA() {
-        try {
-            const response = await fetch(`https://api.github.com/repos/${this.REPO_OWNER}/${this.REPO_NAME}/contents/orders.json`, {
-                headers: {
-                    'Authorization': `token ${this.GITHUB_TOKEN}`,
+                    'Accept': 'application/vnd.github.v3.raw'
                 }
             });
+
             if (response.ok) {
                 const data = await response.json();
-                return data.sha;
+                // Combinar datos remotos con locales
+                this.mergeOrders(data);
+                this.loadOrders();
             }
-            return null;
         } catch (error) {
-            return null;
+            console.log('Usando datos locales:', error);
         }
+    }
+
+    mergeOrders(remoteOrders) {
+        // Crear un mapa de órdenes locales por ID
+        const localOrdersMap = new Map();
+        this.orders.forEach(order => localOrdersMap.set(order.id, order));
+        this.hiddenOrders.forEach(order => localOrdersMap.set(order.id, order));
+
+        // Actualizar con órdenes remotas más recientes
+        remoteOrders.forEach(remoteOrder => {
+            const localOrder = localOrdersMap.get(remoteOrder.id);
+            if (!localOrder || new Date(remoteOrder.lastModified) > new Date(localOrder.lastModified)) {
+                if (remoteOrder.hidden) {
+                    this.hiddenOrders = this.hiddenOrders.filter(o => o.id !== remoteOrder.id);
+                    this.hiddenOrders.push(remoteOrder);
+                } else {
+                    this.orders = this.orders.filter(o => o.id !== remoteOrder.id);
+                    this.orders.push(remoteOrder);
+                }
+            }
+        });
+
+        this.saveOrders();
     }
 
     setupThemeSelector() {
@@ -70,21 +67,18 @@ class OrderManager {
 
     addOrder(event) {
         event.preventDefault();
-        const customerName = document.getElementById('customerName').value;
-        const phoneNumber = document.getElementById('phoneNumber').value;
-        const orderType = document.getElementById('orderType').value;
-        const observations = document.getElementById('observations').value;
-
         const order = {
             id: Date.now().toString(),
-            customerName,
-            phoneNumber,
-            orderType,
-            observations,
+            customerName: document.getElementById('customerName').value,
+            phoneNumber: document.getElementById('phoneNumber').value,
+            orderType: document.getElementById('orderType').value,
+            observations: document.getElementById('observations').value,
             creationDate: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
             deliveryDate: null,
             paid: false,
-            delivered: false
+            delivered: false,
+            hidden: false
         };
 
         this.orders.push(order);
@@ -97,6 +91,7 @@ class OrderManager {
         const order = this.orders.find(o => o.id === orderId);
         if (order) {
             order.paid = !order.paid;
+            order.lastModified = new Date().toISOString();
             this.saveOrders();
             this.loadOrders();
         }
@@ -107,6 +102,7 @@ class OrderManager {
         if (order) {
             order.delivered = !order.delivered;
             order.deliveryDate = order.delivered ? new Date().toISOString() : null;
+            order.lastModified = new Date().toISOString();
             this.saveOrders();
             this.loadOrders();
         }
@@ -116,6 +112,8 @@ class OrderManager {
         const orderIndex = this.orders.findIndex(o => o.id === orderId);
         if (orderIndex !== -1) {
             const [order] = this.orders.splice(orderIndex, 1);
+            order.hidden = true;
+            order.lastModified = new Date().toISOString();
             this.hiddenOrders.push(order);
             this.saveOrders();
             this.loadOrders();
@@ -126,6 +124,8 @@ class OrderManager {
         const orderIndex = this.hiddenOrders.findIndex(o => o.id === orderId);
         if (orderIndex !== -1) {
             const [order] = this.hiddenOrders.splice(orderIndex, 1);
+            order.hidden = false;
+            order.lastModified = new Date().toISOString();
             this.orders.push(order);
             this.saveOrders();
             this.loadOrders();
@@ -134,10 +134,7 @@ class OrderManager {
     }
 
     saveOrders() {
-        localStorage.setItem('orders', JSON.stringify(this.orders));
-        localStorage.setItem('hiddenOrders', JSON.stringify(this.hiddenOrders));
-        this.syncWithGitHub();
-
+        // Limpiar pedidos entregados después de 10 días
         const tenDaysAgo = new Date();
         tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
 
@@ -148,6 +145,12 @@ class OrderManager {
             }
             return true;
         });
+
+        localStorage.setItem('orders', JSON.stringify(this.orders));
+        localStorage.setItem('hiddenOrders', JSON.stringify(this.hiddenOrders));
+
+        // No intentamos sincronizar con GitHub aquí, ya que necesitaríamos el token
+        // Los datos se mantienen localmente
     }
 
     loadOrders() {
