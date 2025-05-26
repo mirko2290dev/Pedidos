@@ -3,92 +3,67 @@ class OrderManager {
         this.orders = [];
         this.hiddenOrders = [];
         this.loadFromLocalStorage();
+        this.setupEventListeners();
         this.setupThemeSelector();
-        this.syncFromGitHub();
+        this.renderOrders();
         this.cleanupOldOrders();
+        this.syncFromGitHub(); // Cargar datos iniciales
         setInterval(() => this.cleanupOldOrders(), 24 * 60 * 60 * 1000); // Check daily
     }
 
     async syncFromGitHub() {
         try {
             const response = await fetch('https://raw.githubusercontent.com/mirko2290dec/Pedidos/main/orders.json');
-            if (!response.ok) {
-                throw new Error('No se pudo obtener los datos del repositorio');
-            }
-            const remoteData = await response.json();
-            this.mergeOrders(remoteData);
+            if (!response.ok) return;
+            const data = await response.json();
+            if (data.orders) this.orders = [...data.orders];
+            if (data.hiddenOrders) this.hiddenOrders = [...data.hiddenOrders];
+            this.saveToLocalStorage();
+            this.renderOrders();
+            this.renderHiddenOrders();
         } catch (error) {
             console.error('Error al sincronizar con GitHub:', error);
         }
     }
 
-    mergeOrders(remoteData) {
-        const remoteOrders = remoteData.orders || [];
-        const remoteHiddenOrders = remoteData.hiddenOrders || [];
+    setupEventListeners() {
+        const configBtn = document.getElementById('configBtn');
+        const closeConfigBtn = document.getElementById('closeConfigBtn');
+        const configModal = document.getElementById('configModal');
 
-        // Merge visible orders
-        remoteOrders.forEach(remoteOrder => {
-            const localOrder = this.orders.find(o => o.id === remoteOrder.id);
-            if (!localOrder || remoteOrder.lastModified > localOrder.lastModified) {
-                if (!localOrder) {
-                    this.orders.push(remoteOrder);
-                } else {
-                    Object.assign(localOrder, remoteOrder);
-                }
+        configBtn.onclick = () => {
+            configModal.style.display = 'block';
+            this.renderHiddenOrders();
+        };
+
+        closeConfigBtn.onclick = () => {
+            configModal.style.display = 'none';
+        };
+
+        window.onclick = (event) => {
+            if (event.target === configModal) {
+                configModal.style.display = 'none';
             }
-        });
+        };
 
-        // Merge hidden orders
-        remoteHiddenOrders.forEach(remoteOrder => {
-            const localHiddenOrder = this.hiddenOrders.find(o => o.id === remoteOrder.id);
-            if (!localHiddenOrder || remoteOrder.lastModified > localHiddenOrder.lastModified) {
-                if (!localHiddenOrder) {
-                    this.hiddenOrders.push(remoteOrder);
-                } else {
-                    Object.assign(localHiddenOrder, remoteOrder);
-                }
-            }
-        });
-
-        this.saveToLocalStorage();
-        this.renderOrders();
+        const orderForm = document.getElementById('orderForm');
+        orderForm.onsubmit = (e) => {
+            e.preventDefault();
+            this.addOrder();
+        };
     }
 
     setupThemeSelector() {
+        const themeSelect = document.getElementById('themeSelect');
         const savedTheme = localStorage.getItem('theme') || 'light';
-        this.setTheme(savedTheme);
-    }
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        themeSelect.value = savedTheme;
 
-    setTheme(theme) {
-        document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('theme', theme);
-    }
-
-    toggleConfigPanel() {
-        const panel = document.getElementById('configPanel');
-        panel.classList.toggle('hidden');
-    }
-
-    hideConfigPanel() {
-        const panel = document.getElementById('configPanel');
-        panel.classList.add('hidden');
-    }
-
-    showHiddenOrders() {
-        const container = document.getElementById('ordersContainer');
-        container.innerHTML = '';
-
-        this.hiddenOrders.forEach(order => {
-            const card = this.createOrderCard(order, true);
-            container.appendChild(card);
-        });
-
-        // Agregar botón para volver a los pedidos normales
-        const backButton = document.createElement('button');
-        backButton.textContent = 'Volver a Pedidos Activos';
-        backButton.onclick = () => this.renderOrders();
-        backButton.style.marginTop = '20px';
-        container.insertBefore(backButton, container.firstChild);
+        themeSelect.onchange = (e) => {
+            const theme = e.target.value;
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+        };
     }
 
     loadFromLocalStorage() {
@@ -106,10 +81,11 @@ class OrderManager {
     addOrder() {
         const customerName = document.getElementById('customerName').value;
         const phoneNumber = document.getElementById('phoneNumber').value;
-        const orderType = document.getElementById('orderType').value;
+        const productType = document.getElementById('productType').value;
         const observations = document.getElementById('observations').value;
+        const paid = document.getElementById('paid').checked;
 
-        if (!customerName || !phoneNumber || !orderType) {
+        if (!customerName || !phoneNumber || !productType) {
             alert('Por favor complete todos los campos requeridos');
             return;
         }
@@ -118,10 +94,10 @@ class OrderManager {
             id: Date.now().toString(),
             customerName,
             phoneNumber,
-            orderType,
+            productType,
             observations,
             date: new Date().toISOString(),
-            paid: false,
+            paid,
             delivered: false,
             lastModified: Date.now()
         };
@@ -130,11 +106,8 @@ class OrderManager {
         this.saveToLocalStorage();
         this.renderOrders();
 
-        // Clear form
-        document.getElementById('customerName').value = '';
-        document.getElementById('phoneNumber').value = '';
-        document.getElementById('orderType').value = '';
-        document.getElementById('observations').value = '';
+        // Limpiar formulario
+        document.getElementById('orderForm').reset();
     }
 
     toggleOrderStatus(orderId, status) {
@@ -165,7 +138,8 @@ class OrderManager {
             order.lastModified = Date.now();
             this.orders.push(order);
             this.saveToLocalStorage();
-            this.showHiddenOrders(); // Refresh hidden orders view
+            this.renderHiddenOrders();
+            this.renderOrders();
         }
     }
 
@@ -185,7 +159,7 @@ class OrderManager {
 
     createOrderCard(order, isHidden = false) {
         const card = document.createElement('div');
-        card.className = 'order-card';
+        card.className = 'order-card' + (isHidden ? ' hidden-order' : '');
         
         const date = new Date(order.date);
         const formattedDate = date.toLocaleDateString('es-ES', {
@@ -199,14 +173,14 @@ class OrderManager {
         card.innerHTML = `
             <h3>${order.customerName}</h3>
             <p><strong>Teléfono:</strong> ${order.phoneNumber}</p>
-            <p><strong>Tipo:</strong> ${order.orderType}</p>
+            <p><strong>Tipo de Producto:</strong> ${order.productType}</p>
             <p><strong>Fecha:</strong> ${formattedDate}</p>
             ${order.observations ? `<p><strong>Observaciones:</strong> ${order.observations}</p>` : ''}
             <p><strong>Estado:</strong> 
                 ${order.paid ? 'Pagado' : 'Pendiente de pago'} | 
                 ${order.delivered ? 'Entregado' : 'Pendiente de entrega'}
             </p>
-            <div class="status-buttons">
+            <div class="order-actions">
                 ${isHidden ?
                     `<button onclick="orderManager.restoreOrder('${order.id}')">Restaurar Pedido</button>` :
                     `<button onclick="orderManager.toggleOrderStatus('${order.id}', 'paid')">
@@ -224,10 +198,23 @@ class OrderManager {
     }
 
     renderOrders() {
-        const container = document.getElementById('ordersContainer');
+        const container = document.getElementById('ordersList');
         container.innerHTML = '';
         this.orders.forEach(order => {
             const card = this.createOrderCard(order);
+            container.appendChild(card);
+        });
+    }
+
+    renderHiddenOrders() {
+        const container = document.getElementById('hiddenOrdersList');
+        container.innerHTML = '';
+        if (this.hiddenOrders.length === 0) {
+            container.innerHTML = '<p>No hay pedidos ocultos</p>';
+            return;
+        }
+        this.hiddenOrders.forEach(order => {
+            const card = this.createOrderCard(order, true);
             container.appendChild(card);
         });
     }
