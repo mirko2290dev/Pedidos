@@ -3,39 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestión de Pedidos</title>
+    <title>Sistema de Gestión de Pedidos</title>
     <link rel="stylesheet" href="styles.css">
 </head>
-<body class="light">
-    <div class="container">
-        <header>
-            <h1>Gestión de Pedidos</h1>
-            <div class="theme-config">
-                <select id="themeSelector">
-                    <option value="light">Tema Claro</option>
-                    <option value="dark">Tema Oscuro</option>
-                    <option value="neon">Tema Neón</option>
-                    <option value="pastel">Tema Pastel</option>
-                </select>
-                <button id="toggleHiddenOrders">Ver Pedidos Ocultos</button>
-            </div>
-        </header>
+<body>
+    <div class="theme-selector">
+        <button onclick="orderManager.setTheme('light')">Claro</button>
+        <button onclick="orderManager.setTheme('dark')">Oscuro</button>
+        <button onclick="orderManager.setTheme('neon')">Neón</button>
+        <button onclick="orderManager.setTheme('pastel')">Pastel</button>
+    </div>
 
-        <form id="orderForm" class="order-form">
+    <div class="config-button">
+        <button onclick="orderManager.toggleConfigPanel()">⚙️ Configuración</button>
+    </div>
+
+    <div id="configPanel" class="config-panel hidden">
+        <h3>Configuración</h3>
+        <button onclick="orderManager.showHiddenOrders()">Ver Pedidos Ocultos</button>
+        <button onclick="orderManager.hideConfigPanel()">Cerrar</button>
+    </div>
+
+    <div class="container">
+        <h1>Sistema de Gestión de Pedidos</h1>
+        
+        <div class="order-form">
             <input type="text" id="customerName" placeholder="Nombre del Cliente" required>
             <input type="tel" id="phoneNumber" placeholder="Número de Teléfono" required>
             <input type="text" id="orderType" placeholder="Tipo de Pedido" required>
             <textarea id="observations" placeholder="Observaciones"></textarea>
-            <button type="submit">Crear Pedido</button>
-        </form>
+            <button onclick="orderManager.addOrder()">Crear Pedido</button>
+        </div>
 
-        <div id="ordersList" class="orders-list"></div>
-
-        <section id="hiddenOrdersSection" style="display: none;">
-            <h2>Pedidos Ocultos</h2>
-            <div id="hiddenOrdersList" class="orders-list"></div>
-        </section>
+        <div class="orders-container" id="ordersContainer"></div>
     </div>
+
     <script src="script.js"></script>
 </body>
 </html>
